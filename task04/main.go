@@ -12,7 +12,8 @@ func startForking(message string, countOfProcesses, countOfIterations int64) {
 	var ret uintptr
 	var i, j int64
 
-	f, err := os.OpenFile("testlogfile", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	// Расскомментировать, если хочется писать в файл
+	f, err := os.OpenFile("logfile", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
 		log.Fatalf("error opening file: %v", err)
 	}
@@ -20,6 +21,8 @@ func startForking(message string, countOfProcesses, countOfIterations int64) {
 	log.SetOutput(f)
 
 	for i = 0; i < countOfProcesses; i++ {
+		_, _, _ = syscall.Syscall(uintptr(syscall.SYS_PRCTL), uintptr(syscall.PR_SET_PDEATHSIG), uintptr(syscall.SIGKILL), 0)
+
 		ret, _, _ = syscall.Syscall(syscall.SYS_FORK, 0, 0, 0)
 		if ret == 0 {
 			// Child process
@@ -36,6 +39,7 @@ func startForking(message string, countOfProcesses, countOfIterations int64) {
 		for p != -1 {
 			p, _ = syscall.Wait4(-1, nil, 0, nil)
 		}
+		os.Exit(0)
 	}
 }
 
@@ -59,4 +63,6 @@ func main() {
 	}
 
 	startForking(os.Args[1], countOfProcesses, countOfIterations)
+
+	log.Println("Will never execute")
 }
