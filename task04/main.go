@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"os/signal"
 	"strconv"
 	"syscall"
 	"time"
@@ -11,6 +12,7 @@ import (
 func startForking(message string, countOfProcesses, countOfIterations int64) {
 	var ret uintptr
 	var i, j int64
+	var pids []uintptr
 
 	// Расскомментировать, если хочется писать в файл
 	f, err := os.OpenFile("logfile", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
@@ -21,23 +23,27 @@ func startForking(message string, countOfProcesses, countOfIterations int64) {
 	log.SetOutput(f)
 
 	for i = 0; i < countOfProcesses; i++ {
-		_, _, _ = syscall.Syscall(uintptr(syscall.SYS_PRCTL), uintptr(syscall.PR_SET_PDEATHSIG), uintptr(syscall.SIGKILL), 0)
 
 		ret, _, _ = syscall.Syscall(syscall.SYS_FORK, 0, 0, 0)
 		if ret == 0 {
 			// Child process
+			_, _, _ = syscall.Syscall(uintptr(syscall.SYS_PRCTL), uintptr(syscall.PR_SET_PDEATHSIG), uintptr(syscall.SIGKILL), 0)
 			for j = 0; j < (i+1)*countOfIterations; j++ {
 				time.Sleep(1 * time.Second)
 				log.Printf("Fork №%d, Message: %s, Iteration: %d\n", i, message, j)
 			}
 			return
+		} else {
+			pids = append(pids, ret)
 		}
 	}
 
 	if ret > 0 {
-		p, _ := syscall.Wait4(-1, nil, 0, nil)
-		for p != -1 {
-			p, _ = syscall.Wait4(-1, nil, 0, nil)
+		ch := make(chan os.Signal, 1)
+		signal.Notify(ch, syscall.SIGCHLD)
+		<-ch
+		for _, pid := range pids {
+			syscall.Syscall(uintptr(syscall.SYS_KILL), pid, uintptr(syscall.SIGKILL), 0)
 		}
 		os.Exit(0)
 	}
